@@ -1,9 +1,11 @@
 {
   "name": "lossless-cut",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "win": "yarn build && yarn package:win32_x64",
+    "mac": "yarn build && yarn package:darwin_x64",
     "start": "electron dist",
     "watch": "npm run build && babel src -d dist --copy-files -w",
     "build": "rm -rf dist && babel src -d dist --copy-files && ln -s ../node_modules dist/ && ln -s ../package.json ./dist/",

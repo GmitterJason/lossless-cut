@@ -95,7 +95,7 @@ input, button, textarea, :focus {
   background-color: #444;
 }
 
-.timeline-wrapper .current-time, .timeline-wrapper .cut-section, .timeline-wrapper .cut-time-marker {
+.timeline-wrapper .current-time, .timeline-wrapper .cut-section, .timeline-wrapper .cut-time-marker, .memory-time {
   position: absolute;
   bottom: 0;
   top: 0;
@@ -108,10 +108,14 @@ input, button, textarea, :focus {
   z-index: 2;
   box-sizing: border-box;
 }
-.timeline-wrapper .current-time {
+.timeline-wrapper .current-time, .timeline-wrapper .memory-time {
   z-index: 3;
   background-color: rgba(255, 255, 255, 1);
   width: 1px;
+}
+
+.timeline-wrapper .memory-time {
+  background-color: rgba(255, 0, 255, 1);
 }
 
 #drag-drop-field {
