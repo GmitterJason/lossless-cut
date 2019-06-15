@@ -35,11 +35,10 @@ function getVideo() {
 
 function seekAbs(val) {
   const video = getVideo();
-  if (val == null || Number.isNaN(val)) return;
-
+  if (val == null || (Number.isNaN(val) && val !== 'start' && val !== 'end')) return;
   let outVal = val;
-  if (outVal < 0) outVal = 0;
-  if (outVal > video.duration) outVal = video.duration;
+  if (outVal === 'start' || outVal < 0) outVal = 0;
+  if (outVal === 'end' || outVal > video.duration) outVal = video.duration;
 
   video.currentTime = outVal;
 }
@@ -87,12 +86,16 @@ const getInitialLocalState = () => ({
   rotation: 360,
   cutProgress: undefined,
   startTimeOffset: 0,
+  newClipStatus: true,
+  newClipStatusIn: false,
+  newClipStatusOut: false,
+  memoryLocation: 0,
 });
 
 const globalState = {
   stripAudio: false,
   includeAllStreams: true,
-  captureFormat: 'jpeg',
+  captureFormat: 'png',
   customOutDir: undefined,
   keyframeCut: true,
   autoMerge: false,
@@ -220,20 +223,48 @@ class App extends React.Component {
     };
 
     Mousetrap.bind('space', () => this.playCommand());
-    Mousetrap.bind('k', () => this.playCommand());
-    Mousetrap.bind('j', () => this.changePlaybackRate(-1));
-    Mousetrap.bind('l', () => this.changePlaybackRate(1));
-    Mousetrap.bind('left', () => seekRel(-1));
-    Mousetrap.bind('right', () => seekRel(1));
-    Mousetrap.bind('.', () => shortStep(1));
+    Mousetrap.bind('q', () => this.setCutStart(-1));
+    Mousetrap.bind('e', () => this.setCutEnd(1));
+    Mousetrap.bind('w', () => this.playCommand());
+    Mousetrap.bind('left', () => seekRel(-5));
+    Mousetrap.bind('right', () => seekRel(5));
+    Mousetrap.bind('shift+left', () => seekRel(-10));
+    Mousetrap.bind('shift+right', () => seekRel(10));
+    Mousetrap.bind('option+left', () => seekRel(-2));
+    Mousetrap.bind('option+right', () => seekRel(2));
+    Mousetrap.bind('mod+left', () => seekRel(-30));
+    Mousetrap.bind('mod+right', () => seekRel(30));
+    Mousetrap.bind('mod+option+left', () => seekRel(-120));
+    Mousetrap.bind('mod+option+right', () => seekRel(120));
     Mousetrap.bind(',', () => shortStep(-1));
+    Mousetrap.bind('.', () => shortStep(1));
     Mousetrap.bind('c', () => this.capture());
-    Mousetrap.bind('e', () => this.cutClick());
-    Mousetrap.bind('i', () => this.setCutStart());
-    Mousetrap.bind('o', () => this.setCutEnd());
+    Mousetrap.bind('f12', () => this.cutClick());
+    Mousetrap.bind('i', () => this.setCutStart(-1));
+    Mousetrap.bind('o', () => this.setCutEnd(1));
+    Mousetrap.bind('shift+i', () => this.setCutStart());
+    Mousetrap.bind('shift+o', () => this.setCutEnd());
     Mousetrap.bind('h', () => this.toggleHelp());
     Mousetrap.bind('+', () => this.addCutSegment());
     Mousetrap.bind('backspace', () => this.removeCutSegment());
+    Mousetrap.bind('1', () => this.changePlaybackRateStatic(1));
+    Mousetrap.bind('2', () => this.changePlaybackRateStatic(2));
+    Mousetrap.bind('3', () => this.changePlaybackRateStatic(3));
+    Mousetrap.bind('4', () => this.changePlaybackRateStatic(4));
+    Mousetrap.bind('5', () => this.changePlaybackRateStatic(5));
+    Mousetrap.bind('6', () => this.changePlaybackRateStatic(6));
+    Mousetrap.bind('7', () => this.changePlaybackRateStatic(7));
+    Mousetrap.bind('8', () => this.changePlaybackRateStatic(8));
+    Mousetrap.bind('9', () => this.changePlaybackRateStatic(9));
+    Mousetrap.bind('0', () => this.changePlaybackRateStatic(16));
+    Mousetrap.bind('[', () => this.jumpCutStart());
+    Mousetrap.bind(']', () => this.jumpCutEnd());
+    Mousetrap.bind('pageup', () => this.jumpCutStart());
+    Mousetrap.bind('pagedown', () => this.jumpCutEnd());
+    Mousetrap.bind('home', () => seekAbs('start'));
+    Mousetrap.bind('end', () => seekAbs('end'));
+    Mousetrap.bind('option+f2', () => this.setMemoryLocation());
+    Mousetrap.bind('f2', () => this.getMemoryLocation());
 
     electron.ipcRenderer.send('renderer-ready');
   }
@@ -254,14 +285,22 @@ class App extends React.Component {
     this.setState({ cutProgress });
   }
 
-  setCutStart = () => {
+  setCutStart = (padding = 0) => {
     const { currentTime } = this.state;
-    this.setCutTime('start', currentTime);
+    this.setCutTime('start', currentTime + padding);
+    this.setState({ newClipStatusIn: true });
   }
 
-  setCutEnd = () => {
+  setCutEnd = (padding = 0) => {
     const { currentTime } = this.state;
-    this.setCutTime('end', currentTime);
+    this.setCutTime('end', currentTime + padding);
+    this.setState({ newClipStatusOut: true });
+  }
+
+  setMemoryLocation = () => {
+    const { currentTime } = this.state;
+
+    this.setState({ memoryLocation: currentTime });
   }
 
   setOutputDir = () => {
@@ -273,6 +312,10 @@ class App extends React.Component {
   getFileUri() {
     const { html5FriendlyPath, filePath } = this.state;
     return (html5FriendlyPath || filePath || '').replace(/#/g, '%23');
+  }
+
+  getMemoryLocation = () => {
+    seekAbs(this.state.memoryLocation);
   }
 
   getOutputDir() {
@@ -307,7 +350,10 @@ class App extends React.Component {
     const { currentSeg, cutSegments } = this.state;
     const cloned = clone(cutSegments);
     cloned[currentSeg][type] = time;
-    this.setState({ cutSegments: cloned });
+    this.setState({
+      cutSegments: cloned,
+      newClipStatus: false,
+    });
   }
 
   getApparentCutStartTime(i) {
@@ -366,7 +412,13 @@ class App extends React.Component {
     ];
 
     const currentSegNew = cutSegmentsNew.length - 1;
-    this.setState({ currentSeg: currentSegNew, cutSegments: cutSegmentsNew });
+    this.setState({
+      currentSeg: currentSegNew,
+      cutSegments: cutSegmentsNew,
+      newClipStatus: true,
+      newClipStatusIn: false,
+      newClipStatusOut: false,
+    });
   }
 
   removeCutSegment = () => {
@@ -378,7 +430,17 @@ class App extends React.Component {
     cutSegmentsNew.splice(currentSeg, 1);
 
     const currentSegNew = Math.min(currentSeg, cutSegmentsNew.length - 1);
-    this.setState({ currentSeg: currentSegNew, cutSegments: cutSegmentsNew });
+    this.setState({
+      currentSeg: currentSegNew,
+      cutSegments: cutSegmentsNew,
+      newClipStatus: false,
+      newClipStatusIn: true,
+      newClipStatusOut: true,
+    });
+  }
+
+  removeAllSegments = () => {
+    this.setState({ currentSeg: 0, cutSegments: [createSegment()], newClipStatus: true });
   }
 
   jumpCutStart = () => {
@@ -515,6 +577,14 @@ class App extends React.Component {
     }
   }
 
+  changePlaybackRateStatic(dir) {
+    const video = getVideo();
+    video.playbackRate = dir;
+    if (!this.state.playing) {
+      video.play();
+    }
+  }
+
   resetState() {
     const video = getVideo();
     video.currentTime = 0;
@@ -579,14 +649,19 @@ class App extends React.Component {
     const {
       working, filePath, duration: durationRaw, cutProgress, currentTime, playing,
       fileFormat, playbackRate, keyframeCut, includeAllStreams, stripAudio, captureFormat,
-      helpVisible, currentSeg, cutSegments, autoMerge,
+      helpVisible, currentSeg, cutSegments, autoMerge, newClipStatus, newClipStatusIn,
+      newClipStatusOut, memoryLocation,
     } = this.state;
 
     const duration = durationRaw || 1;
     const currentTimePos = currentTime !== undefined && `${(currentTime / duration) * 100}%`;
+    const memoryTimePos = memoryLocation !== undefined && `${(memoryLocation / duration) * 100}%`;
 
     const segColor = this.getCutSeg().color;
     const segBgColor = segColor.alpha(0.5).string();
+    const segNewClipStatus = newClipStatus ? 'white' : 'black';
+    const segNewClipStatusIn = newClipStatusIn ? 'white' : 'black';
+    const segNewClipStatusOut = newClipStatusOut ? 'white' : 'black';
 
     const jumpCutButtonStyle = {
       position: 'absolute', color: 'black', bottom: 0, top: 0, padding: '2px 8px',
@@ -637,6 +712,7 @@ class App extends React.Component {
             options={{ recognizers: {} }}
           >
             <div className="timeline-wrapper">
+              {memoryTimePos !== undefined && <div className="memory-time" style={{ left: memoryTimePos }} />}
               {currentTimePos !== undefined && <div className="current-time" style={{ left: currentTimePos }} />}
 
               {cutSegments.map((seg, i) => (
@@ -753,6 +829,21 @@ class App extends React.Component {
               tabIndex="0"
               onClick={this.setCutEnd}
             />
+            <i
+              style={{ color: segNewClipStatus }}
+              title="new clip indicator"
+              className="button fa fa-pencil"
+            />
+            <i
+              style={{ color: segNewClipStatusIn }}
+              title="IN set"
+              className="button fa fa-caret-left"
+            />
+            <i
+              style={{ color: segNewClipStatusOut }}
+              title="OUT set"
+              className="button fa fa-caret-right"
+            />
           </div>
         </div>
 
@@ -790,6 +881,14 @@ class App extends React.Component {
             onClick={withBlur(this.toggleAutoMerge)}
           >
             {autoMerge ? 'am' : 'nm'}
+          </button>
+
+          <button
+            type="button"
+            title="Remove all segments"
+            onClick={withBlur(this.removeAllSegments)}
+          >
+            X
           </button>
         </div>
 
